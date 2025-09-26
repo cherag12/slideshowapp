@@ -47,7 +47,7 @@ downloadBtn.addEventListener('click', async ()=> {
   let mapLoaded = false;
   if (userLocation) {
     // Use the API key provided by user
-    const key = 'AIzaSyDiO_vSDhKXgH-t_FT0PMF1L_OkbjU95HU';
+    const key = 'we have used are private google key';
     const center = encodeURIComponent(userLocation);
     // choose a zoom appropriate for city-level; you can adjust zoom param if required
     const zoom = 12;
@@ -173,3 +173,4 @@ downloadBtn.addEventListener('click', async ()=> {
   a.download = `slide_${(currentIndex+1)}.png`;
   a.click();
 });
+
