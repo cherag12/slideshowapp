@@ -1,0 +1,1564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Slideshow + User Map + Compass</title>
+<style>
+  :root{--bg:#0f0f10;--card:#151516;--muted:#9aa0a6;--accent:#2f9cff}
+  html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Roboto,Arial;background:var(--bg);color:#fff}
+  .app{max-width:1100px;margin:16px auto;padding:14px}
+  .top{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .card{background:var(--card);padding:12px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,0.6)}
+  .controls .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input[type=file]{color:transparent}
+  label{font-size:13px;color:var(--muted)}
+  .slideshow-wrap{margin-top:12px;display:flex;gap:12px;align-items:flex-start}
+  .left-col{flex:1}
+  .right-col{width:320px}
+  .viewer{position:relative;background:#000;border-radius:12px;overflow:hidden;height:62vh;display:flex;align-items:center;justify-content:center}
+  #slideImage{max-width:100%;max-height:100%;object-fit:contain;transition:opacity .4s ease}
+  .compass{
+    position:absolute;left:12px;top:12px;width:90px;height:90px;opacity:.95;transform-origin:center center;z-index:30;
+    filter:drop-shadow(0 3px 8px rgba(0,0,0,0.8));
+  }
+  /* Slide overlay (right-bottom) */
+  .overlay{
+    position:absolute;right:12px;bottom:12px;background:rgba(0,0,0,0.55);padding:10px;border-radius:10px;text-align:right;z-index:40;font-size:13px;
+    min-width:200px;
+  }
+  .overlay p{margin:2px 0;color:#e6eef8}
+  .controls{display:flex;gap:10px;flex-direction:column}
+  .small{font-size:13px;color:var(--muted)}
+  .btn{background:#0b1220;border:1px solid rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;color:#fff;cursor:pointer}
+  .btn:active{transform:translateY(1px)}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .photo-list{max-height:220px;overflow:auto;margin-top:8px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02)}
+  .photo-item{display:flex;gap:8px;align-items:center;padding:6px;border-radius:6px}
+  .photo-item img{width:48px;height:48px;object-fit:cover;border-radius:6px}
+  .input-row{display:flex;gap:8px;align-items:center}
+  input[type="text"], input[type="number"], input[type="date"], input[type="time"], select {
+    background:#0b0d0f;border:1px solid rgba(255,255,255,0.06);padding:8px;border-radius:8px;color:#fff
+  }
+  .map-frame{width:100%;height:200px;border:0;border-radius:8px;margin-top:10px}
+  .slide-map { position:absolute; left:12px; bottom:12px; width:220px; height:150px; z-index:25; border:0; border-radius:8px; background:#fff; }
+  .footer{margin-top:12px;color:var(--muted);font-size:13px}
+  .center{display:flex;align-items:center;justify-content:center;gap:8px}
+  .muted{color:var(--muted)}
+  .fit-toggle{display:inline-flex;gap:6px;align-items:center}
+  @media (max-width:900px){
+    .slideshow-wrap{flex-direction:column}
+    .right-col{width:100%}
+    .viewer{height:50vh}
+    /* Slide map always the same size */
+.slide-map {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: 320px;
+  height: 220px;
+  z-index: 25;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+}
+}
+</style>
+</head>
+<body>
+
+
+  <div class="app">
+    <div class="top">
+      <div class="card controls" style="flex:1;min-width:260px">
+        <div class="row">
+          <label class="small">Select Photos (multiple)</label>
+          <input id="photoUpload" type="file" accept="image/*" multiple />
+        </div>
+
+        <div class="row" style="margin-top:8px">
+          <label class="small">Audio (optional)</label>
+          <input id="audioUpload" type="file" accept="audio/*" />
+        </div>
+
+        <div style="margin-top:8px" class="row">
+          <label class="small">Slide duration (sec)</label>
+          <input id="durationInput" type="number" value="3" min="1" style="width:80px" />
+          <label class="small">Interval (mins auto-time)</label>
+          <input id="intervalInput" type="number" value="5" min="1" style="width:80px" />
+        </div>
+
+        <div style="margin-top:8px" class="row">
+          <div class="fit-toggle">
+            <label class="small">Fit Mode</label>
+            <select id="fitMode">
+              <option value="contain">Contain (no crop)</option>
+              <option value="cover">Cover (fill & crop)</option>
+            </select>
+          </div>
+
+          <div style="margin-left:auto" class="center">
+            <button class="btn" id="startBtn">▶ Start</button>
+            <button class="btn" id="pauseBtn">⏸ Pause</button>
+          </div>
+        </div>
+
+        <div style="margin-top:8px" class="row">
+          <button class="btn" id="prevBtn">⏮ Prev</button>
+          <button class="btn" id="nextBtn">⏭ Next</button>
+          <button class="btn" id="fullscreenBtn">⛶ Fullscreen</button>
+          <button class="btn" id="downloadBtn">⬇ Download Slide</button>
+          <button class="btn" id="downloadZipBtn">Download All (ZIP)</button>
+        </div>
+
+        <div style="margin-top:10px">
+          <label class="small">Enter Location (user input)</label>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <input id="locationInput" type="text" placeholder="Place, district, state" style="flex:1" />
+            <button class="btn" id="showMapBtn">Show Map</button>
+          </div>
+        </div>
+
+        <div id="photoDetails" style="margin-top:10px"></div>
+
+        <div style="margin-top:8px" class="toolbar">
+          <button class="btn" id="exportBtn">Export JSON</button>
+          <input id="importFile" type="file" style="display:none" accept=".json" />
+          <button class="btn" id="importBtn">Import JSON</button>
+        </div>
+      </div>
+
+      <div class="card right-col">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div class="small">Compass status</div>
+            <div id="compassStatus" class="muted">Waiting for device orientation (if supported)</div>
+          </div>
+          <div>
+            <label class="small">Set direction</label>
+            <select id="manualDir">
+              <option value="">—</option>
+              <option>N</option><option>NE</option><option>E</option><option>SE</option>
+              <option>S</option><option>SW</option><option>W</option><option>NW</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="photo-list card" id="thumbList" style="margin-top:10px"></div>
+
+        <div style="margin-top:10px">
+          <div class="small">Map preview (user input)</div>
+          <iframe id="mapFrame" class="map-frame" src=""></iframe>
+        </div>
+
+        <div style="margin-top:8px" class="footer center">
+          <div class="muted">Tips: For map preview type "Nagpur, Maharashtra" or "Mumbai, MH".</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slideshow-wrap" style="margin-top:12px">
+      <div class="left-col card">
+        <div id="viewer" class="viewer">
+          <img id="slideImage" src="" alt="slide" draggable="false">
+          <!-- Compass (unchanged) -->
+          <img id="compassImg" class="compass" src="data:image/svg+xml;utf8,
+            <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
+              <circle cx='50' cy='50' r='48' fill='rgba(255,255,255,0.04)' stroke='rgba(255,255,255,0.22)' stroke-width='2'/>
+              <polygon points='50,10 58,50 50,42 42,50' fill='%232f9cff'/>
+              <text x='50' y='94' font-size='8' fill='rgba(255,255,255,0.6)' text-anchor='middle'>N</text>
+            </svg>" alt="compass">
+          <!-- MAP INSIDE SLIDE: lower-left overlay (new) -->
+          <iframe id="mapFrameSlide" class="slide-map" src=""></iframe>
+<div id="overlay" class="overlay">
+  <p id="odateTime">DateTime: -</p>
+  <p id="oheading">Heading: -</p>
+  <p id="oplace">Place: -</p>
+  <p id="odivision">Division: -</p>
+  <p id="ostate">State: -</p>
+  <p id="oaltspd">Altitude: - · Speed: -</p>
+  <p id="oindex">Index number: -</p>
+</div>
+
+
+        </div>
+
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;justify-content:space-between">
+          <div class="small muted">Click image to toggle pause/play</div>
+          <div><span class="muted">Mode:</span> <span id="modeText">Stopped</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+    <!-- Add JSZip (before your script) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+  
+<script>
+   
+downloadZipBtn.addEventListener('click', async ()=> {
+  if (!photos.length) {
+    alert('No photos to download');
+    return;
+  }
+
+  const zip = new JSZip();
+
+  for (let i = 0; i < photos.length; i++) {
+    const p = photos[i];
+    try {
+      const canvas = await renderSlideToCanvas(p, i);   // render with overlays
+
+      // safer: wrap toBlob in a Promise with reject handling
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(b => b ? resolve(b) : reject("Blob generation failed"), 'image/png');
+      });
+
+      const arrayBuffer = await blob.arrayBuffer();
+      const baseName = p.fileName ? p.fileName.replace(/\.[^.]+$/, '') : `photo_${i+1}`;
+      zip.file(`${baseName}_slide.png`, arrayBuffer);
+
+    } catch (err) {
+      console.error(`⚠️ Skipping photo ${i+1}:`, err);
+    }
+  }
+
+  try {
+    const content = await zip.generateAsync({ type: "blob" });
+    saveAs(content, "slides.zip");
+  } catch (err) {
+    console.error("⚠️ Failed to generate ZIP:", err);
+    alert("ZIP download failed. Check console for details.");
+  }
+})
+/* ============================
+   Reusable renderer (full overlay)
+   ============================ */
+async function renderSlideToCanvas(p, index) {
+  const img = await loadImage(p.src);
+  const canvas = document.createElement('canvas');
+  const W = img.naturalWidth || 10;
+  const H = img.naturalHeight || 10;
+  const maxDim = 2000;
+  const scale = Math.min(1, maxDim / Math.max(W, H));
+  canvas.width = Math.round(W * scale);
+  canvas.height = Math.round(H * scale);
+  const ctx = canvas.getContext('2d');
+  // draw background
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // draw image with fitting same as viewer
+  if (fitMode.value === 'cover') {
+    // cover: fill canvas center
+    const r = Math.max(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+    const w = img.naturalWidth * r, h = img.naturalHeight * r;
+    ctx.drawImage(img, (canvas.width - w)/2, (canvas.height - h)/2, w, h);
+  } else {
+    // contain
+    const r = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+    const w = img.naturalWidth * r, h = img.naturalHeight * r;
+    ctx.drawImage(img, (canvas.width - w)/2, (canvas.height - h)/2, w, h);
+  }
+
+  
+// Fixed map size independent of city or canvas
+// --- fixed map size (match CSS iframe) ---
+let mapW = 220, mapH = 120;   // default desktop
+if (window.innerWidth <= 1200) { 
+  mapW = 120; 
+  mapH = 120; 
+}
+
+// position bottom-left
+const pad = 20;
+const mapX = pad;
+const mapY = canvas.height - pad - mapH;
+
+let mapLoaded = false;
+try {
+  if (userLocation) {
+    const GOOGLE_API_KEY = 'YOUR_API_KEY';
+    const zoom = 12; // ✅ constant zoom for all locations
+    const center = encodeURIComponent(userLocation);
+    const mapURL = `https://maps.googleapis.com/maps/api/staticmap?center=${center}&zoom=${zoom}&size=${mapW}x${mapH}&maptype=roadmap&markers=color:red%7C${center}&scale=2&key=${GOOGLE_API_KEY}`;
+    const mapImg = await loadImage(mapURL);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.33)';
+    roundRect(ctx, mapX - 6, mapY - 6, mapW + 12, mapH + 12, 10, true, false);
+    ctx.drawImage(mapImg, mapX, mapY, mapW, mapH);
+
+    mapLoaded = true;
+  }
+} catch (e) {
+  console.warn('Static map failed (CORS). Falling back to OSM.', e);
+  mapLoaded = false;
+}
+
+// --- OSM fallback (same fixed size + zoom) ---
+if (!mapLoaded && userLocation) {
+  try {
+    await drawOSMStaticMap(ctx, mapX, mapY, mapW, mapH, userLocation, 12); // ✅ zoom locked at 12
+    mapLoaded = true;
+  } catch (err) {
+    console.warn('OSM fallback failed:', err);
+    mapLoaded = false;
+  }
+}
+
+async function drawOSMStaticMap(ctx, x, y, w, h, query, zoom = 12){
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+  const res = await fetch(url, {headers:{'Accept':'application/json'}});
+  if (!res.ok) throw new Error('Geocoding failed');
+  const data = await res.json();
+  if (!data || !data.length) throw new Error('No geocode result');
+  const lat = parseFloat(data[0].lat);
+  const lon = parseFloat(data[0].lon);
+
+  const TILE = 256;
+  const worldSize = TILE * Math.pow(2, zoom);
+
+  const proj = latLonToXY(lat, lon, zoom);
+  const topLeftPx = { x: proj.x - w/2, y: proj.y - h/2 };
+
+  const startTileX = Math.floor(topLeftPx.x / TILE);
+  const startTileY = Math.floor(topLeftPx.y / TILE);
+
+  const offsetX = - (topLeftPx.x - startTileX * TILE);
+  const offsetY = - (topLeftPx.y - startTileY * TILE);
+
+  const cols = Math.ceil((w - offsetX) / TILE) + 1;
+  const rows = Math.ceil((h - offsetY) / TILE) + 1;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  roundRect(ctx, x - 6, y - 6, w + 12, h + 12, 10, true, false);
+
+  const maxTile = Math.pow(2, zoom);
+  for (let r = 0; r < rows; r++){
+    for (let c = 0; c < cols; c++){
+      let tx = startTileX + c;
+      let ty = startTileY + r;
+      tx = ((tx % maxTile) + maxTile) % maxTile;
+      if (ty < 0 || ty >= maxTile) continue;
+      const tileURL = `https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`;
+      try {
+        const img = await loadImage(tileURL);
+        ctx.drawImage(img, x + offsetX + c*TILE, y + offsetY + r*TILE, TILE, TILE);
+      } catch(e){}
+    }
+  }
+
+  // red marker
+  ctx.fillStyle = '#e53935';
+  ctx.beginPath();
+  ctx.arc(x + w/2, y + h/2, 6, 0, Math.PI*2);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+}
+
+  // overlay rectangle bottom-right (info)
+  const boxW = Math.min(canvas.width*0.46, 420*(canvas.width/1000));
+  const boxH = 140*(canvas.height/600);
+  const bx = canvas.width - pad - boxW;
+  const by = canvas.height - pad - boxH;
+  ctx.fillStyle = 'rgba(0,0,0,0.23)';
+  roundRect(ctx, bx, by, boxW, boxH, 12*(canvas.width/1000), true, false);
+////////////////////////////////////////////////
+  // compute date/time/day strings (prefer photo fields)
+// --- compute timestamp string (prefer EXIF > photo > system) ---
+let dateTimeStr = '';
+
+if (p.exifDateTime) {
+  // 1. EXIF datetime
+  const dt = new Date(p.exifDateTime);
+  if (!isNaN(dt.getTime())) {
+    dateTimeStr = dt.toString(); // raw full string
+  }
+}
+else if (p.date) {
+  // 2. fallback to p.date + p.time
+  const dt = new Date(p.date + (p.time ? 'T' + p.time : ''));
+  if (!isNaN(dt.getTime())) {
+    dateTimeStr = dt.toString();
+  }
+}
+else {
+  // 3. system timestamp
+  dateTimeStr = new Date().toString();
+}
+
+// --- text overlay ---
+ctx.fillStyle = '#e9f2ff';
+const baseFont = Math.max(12, Math.round(14 * (canvas.width / 1000)));
+ctx.font = `${baseFont}px sans-serif`;
+ctx.textAlign = 'left';
+
+const lines = [
+  dateTimeStr,                             // full date-time line
+  p.place || userLocation || 'Not set',    // place
+  p.division || '-',                       // division
+  p.state || '-',                          // state
+  `Altitude: ${currentAltitude ? currentAltitude+'m' : 'N/A'} · Speed: ${currentSpeed ? currentSpeed+'km/h' : '0.0km/h'}`,
+  `Index number: ${index+1}`       // index
+];
+
+const lineHeight = Math.max(16, Math.round(baseFont * 1.15));
+lines.forEach((ln, i) => {
+  ctx.fillText(ln, bx + 12*(canvas.width/1000), by + 18*(canvas.width/1000) + i * lineHeight);
+});
+
+
+  // draw compass to left of info box (circle + rotated needle + N)
+  const compassSize = Math.round(72 * (canvas.width/1000));
+  const ccx = pad ;    // X = from left edge
+const ccy = pad ;    // Y = from top edge
+
+  // circle
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(ccx + compassSize/2, ccy + compassSize/2, compassSize/2, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  ctx.fill();
+  ctx.lineWidth = Math.max(2, Math.round(2*(canvas.width/1000)));
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.stroke();
+  ctx.restore();
+
+  // rotate needle
+  const headingDeg = (getHeadingDegrees() ?? 0);
+  ctx.save();
+  ctx.translate(ccx + compassSize/2, ccy + compassSize/2);
+  ctx.rotate((headingDeg) * Math.PI/180);
+  ctx.beginPath();
+  ctx.moveTo(0, -compassSize*0.36);
+  ctx.lineTo(compassSize*0.14, compassSize*0.22);
+  ctx.lineTo(-compassSize*0.14, compassSize*0.22);
+  ctx.closePath();
+  ctx.fillStyle = '#2f9cff';
+  ctx.fill();
+  ctx.restore();
+
+  // draw "N" label above compass
+  ctx.fillStyle = '#e6eef8';
+  ctx.font = `${Math.max(10, Math.round(baseFont*0.9))}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('N', ccx + compassSize/2, ccy + 12);
+
+  // If map failed, display small textual box bottom-left with location
+    // If map failed, display small textual box bottom-left with location
+  if (!mapLoaded && userLocation) {
+    const tx = pad;
+    const ty = canvas.height - pad - 80 * (canvas.width/1000);
+    const tw = Math.min(320, Math.round(canvas.width * 0.28));
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    roundRect(ctx, tx, ty, tw, 70, 8, true, false);
+
+    ctx.fillStyle = '#e9f2ff';
+    ctx.font = `${baseFont}px sans-serif`;
+    ctx.textAlign = 'left';
+    const lines2 = [
+      `Location: ${userLocation}`,
+      `Division: ${p.division || '-'}`,
+      `State: ${p.state || '-'}`
+    ];
+    const lh2 = Math.max(16, Math.round(baseFont * 1.1));
+    lines2.forEach((ln, i) => {
+      ctx.fillText(ln, tx + 10, ty + 20 + i * lh2);
+    });
+  }
+
+  // ✅ save canvas to file
+  return canvas;
+
+};
+
+/* -------------------------
+   OSM fallback helpers (CORS-friendly static map)
+   ------------------------- */
+async function drawOSMStaticMap(ctx, x, y, w, h, query){
+  // 1) Geocode location text to lat/lon via Nominatim (public, CORS-enabled)
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+  const res = await fetch(url, {headers:{'Accept':'application/json'}});
+  if (!res.ok) throw new Error('Geocoding failed');
+  const data = await res.json();
+  if (!data || !data.length) throw new Error('No geocode result');
+  const lat = parseFloat(data[0].lat);
+  const lon = parseFloat(data[0].lon);
+  const zoom = 12;
+
+  // 2) Compute tile coverage
+  const TILE = 256;
+  const scale = 1;
+  const worldSize = TILE * Math.pow(2, zoom);
+
+  const proj = latLonToXY(lat, lon, zoom);
+  const topLeftPx = { x: proj.x - w/2, y: proj.y - h/2 };
+
+  const startTileX = Math.floor(topLeftPx.x / TILE);
+  const startTileY = Math.floor(topLeftPx.y / TILE);
+
+  const offsetX = - (topLeftPx.x - startTileX * TILE);
+  const offsetY = - (topLeftPx.y - startTileY * TILE);
+
+  const cols = Math.ceil((w - offsetX) / TILE) + 1;
+  const rows = Math.ceil((h - offsetY) / TILE) + 1;
+
+  // panel behind map (match Google style)
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  roundRect(ctx, x - 6*(w/640), y - 6*(w/640), w + 12*(w/640), h + 12*(w/640), 10*(w/640), true, false);
+
+  // 3) Draw tiles
+  const maxTile = Math.pow(2, zoom);
+  for (let r = 0; r < rows; r++){
+    for (let c = 0; c < cols; c++){
+      let tx = startTileX + c;
+      let ty = startTileY + r;
+
+      // wrap X (world repeats), clamp Y
+      tx = ((tx % maxTile) + maxTile) % maxTile;
+      if (ty < 0 || ty >= maxTile) continue;
+
+      const tileURL = `https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`;
+      try {
+        const img = await loadImage(tileURL);
+        const dx = x + offsetX + c * TILE;
+        const dy = y + offsetY + r * TILE;
+        ctx.drawImage(img, dx, dy, TILE*scale, TILE*scale);
+      } catch(e){
+        // ignore missing tile
+      }
+    }
+  }
+
+  // 4) Draw a simple red marker at center
+  const centerCanvasX = x + w/2;
+  const centerCanvasY = y + h/2;
+  ctx.save();
+  ctx.fillStyle = '#e53935';
+  ctx.beginPath();
+  ctx.arc(centerCanvasX, centerCanvasY, 6, 0, Math.PI*2);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function latLonToXY(lat, lon, zoom){
+  const TILE = 256;
+  const sinLat = Math.sin(lat * Math.PI / 180);
+  const n = Math.pow(2, zoom);
+  const x = (lon + 180) / 360 * n * TILE;
+  const y = (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * n * TILE;
+  return {x,y};
+}
+
+
+/* -------------------------
+   Geolocation (altitude & speed)
+   ------------------------- */
+if (navigator.geolocation){
+  navigator.geolocation.getCurrentPosition((pos)=>{
+    currentAltitude = pos.coords.altitude !== null ? Math.round(pos.coords.altitude) : null;
+    currentSpeed = pos.coords.speed !== null ? Math.round(pos.coords.speed * 100)/100 : null;
+    showCurrent();
+  }, (err)=>{
+    // user denied or unsupported — leave as null
+    console.log('geoloc err', err);
+  }, {enableHighAccuracy:true, maximumAge:60000, timeout:8000});
+}
+
+/* -------------------------
+   Compass via DeviceOrientation
+   ------------------------- */
+if (window.DeviceOrientationEvent) {
+  // iOS 13+ requires permission
+  function enableDO(){
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().then(r=>{
+        if (r === 'granted') attachDO();
+        else { compassStatus.textContent = 'Permission denied — use manual set'; deviceOrientationSupported=false; }
+      }).catch(()=> { compassStatus.textContent = 'No permission API — using manual'; deviceOrientationSupported=false;});
+    } else {
+      attachDO();
+    }
+  }
+  function attachDO(){
+    window.addEventListener('deviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation', (ev)=>{
+      deviceOrientationSupported = true;
+      // different devices provide different properties; prefer alpha when absolute is not provided
+      let heading = ev.webkitCompassHeading || ev.alpha;
+      if (heading !== null && heading !== undefined) {
+        // on some devices alpha gives degrees from 0..360 relative to device
+        currentHeading = 360 - heading; // adjust to compass bearing
+        // normalize
+        if (currentHeading < 0) currentHeading += 360;
+        if (currentHeading >= 360) currentHeading -= 360;
+        compassStatus.textContent = 'Device orientation active';
+        updateCompassVisual();
+      }
+    }, true);
+  }
+  // try to enable (will prompt on iOS)
+  try { enableDO(); } catch(e){ console.warn('do enable error', e); }
+} else {
+  compassStatus.textContent = 'Device orientation not supported — use manual';
+}
+
+/* manual direction selector */
+manualDir.addEventListener('change', ()=> {
+  const v = manualDir.value;
+  if (!v) return;
+  // set heading degrees approximate
+  const map = {N:0, NE:45, E:90, SE:135, S:180, SW:225, W:270, NW:315};
+  currentHeading = map[v] || null;
+  compassStatus.textContent = 'Manual direction set: ' + (v||'');
+  updateCompassVisual();
+});
+
+/* compass visual rotate */
+function updateCompassVisual(){
+  const deg = getHeadingDegrees();
+  if (deg !== null && deg !== undefined) {
+    compassImg.style.transform = `rotate(${deg}deg)`;
+  } else {
+    compassImg.style.transform = `rotate(0deg)`;
+  }
+}
+function getHeadingDegrees(){ return currentHeading; }
+function getDirectionText(){
+  const deg = getHeadingDegrees();
+  if (deg === null || deg === undefined) return manualDir.value || '';
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  const idx = Math.round(((deg % 360) / 45)) % 8;
+  return dirs[idx];
+}
+
+/* -------------------------
+   UI wiring
+   ------------------------- */
+startBtn.addEventListener('click', startSlideshow);
+pauseBtn.addEventListener('click', pauseSlideshow);
+prevBtn.addEventListener('click', ()=> { pauseSlideshow(); prevPhoto(); });
+nextBtn.addEventListener('click', ()=> { pauseSlideshow(); nextPhoto(); });
+durationInput.addEventListener('change', ()=> { slideDuration = Math.max(1, Number(durationInput.value)||3)*1000; if (slideTimer) { pauseSlideshow(); startSlideshow(); }});
+intervalInput.addEventListener('change', applyAutoTimes);
+
+slideImage.addEventListener('click', ()=> {
+  if (slideTimer) pauseSlideshow(); else startSlideshow();
+});
+
+fullscreenBtn.addEventListener('click', ()=> {
+  const el = document.getElementById('viewer');
+  if (!document.fullscreenElement) el.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen();
+});
+
+/* keyboard navigation */
+document.addEventListener('keydown', (e)=> {
+  if (e.key === 'ArrowRight') { pauseSlideshow(); nextPhoto(); }
+  if (e.key === 'ArrowLeft') { pauseSlideshow(); prevPhoto(); }
+  if (e.key === ' ') { e.preventDefault(); if (slideTimer) pauseSlideshow(); else startSlideshow(); }
+});
+
+/* initial UI */
+showCurrent();
+
+/* -------------------------
+   Utilities / finishing
+   ------------------------- */
+function getCompassDirection(){
+  return getDirectionText();
+}
+
+// keep object URLs from piling — optional cleanup when reloading new images could be added
+document.addEventListener("DOMContentLoaded", ()=> {
+  photos.forEach(p => { try{ URL.revokeObjectURL(p.src); }catch(e){} });
+});
+function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+  if (typeof r === 'undefined') r = 5;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
+
+function loadImage(src) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => res(img);
+    img.onerror = (e) => rej(e || 'load error');
+    img.src = src;
+  });
+}
+
+function getHeadingDegrees() {
+  if (manualDir.value) return dirToDeg(manualDir.value);
+  return currentHeading;
+}
+
+function getDirectionText() {
+  if (manualDir.value) return manualDir.value;
+  if (currentHeading == null) return null;
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  const idx = Math.round(currentHeading / 45) % 8;
+  return dirs[idx];
+}
+
+function dirToDeg(d) {
+  return {N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315}[d] ?? 0;
+}
+
+
+
+
+  </script>
+
+<script>
+/* -------------------------
+   State
+   ------------------------- */
+let photos = []; // { src, fileName, date, time, index }
+let currentIndex = 0;
+let slideDuration = 3000;
+let slideTimer = null;
+let audio = new Audio();
+audio.loop = true;
+let userLocation = "";
+let currentAltitude = null;
+let currentSpeed = null;
+let currentHeading = null; // degrees
+let deviceOrientationSupported = false;
+
+/* -------------------------
+   Helpers & DOM refs
+   ------------------------- */
+const photoUpload = document.getElementById('photoUpload');
+const audioUpload = document.getElementById('audioUpload');
+const durationInput = document.getElementById('durationInput');
+const intervalInput = document.getElementById('intervalInput');
+const fitMode = document.getElementById('fitMode');
+const startBtn = document.getElementById('startBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const downloadZipBtn = document.getElementById("downloadZipBtn");
+const exportBtn = document.getElementById('exportBtn');
+const importBtn = document.getElementById('importBtn');
+const importFile = document.getElementById('importFile');
+const showMapBtn = document.getElementById('showMapBtn');
+const locationInput = document.getElementById('locationInput');
+const mapFrame = document.getElementById('mapFrame');
+const mapFrameSlide = document.getElementById('mapFrameSlide');
+
+const slideImage = document.getElementById('slideImage');
+const overlay = document.getElementById('overlay');
+const odateTime = document.getElementById('odateTime');
+const oheading  = document.getElementById('oheading');
+const oplace    = document.getElementById('oplace');
+const odivision = document.getElementById('odivision');
+const ostate    = document.getElementById('ostate');
+const oaltspd   = document.getElementById('oaltspd');
+const oindex    = document.getElementById('oindex');
+
+
+const thumbList = document.getElementById('thumbList');
+const photoDetails = document.getElementById('photoDetails');
+const compassImg = document.getElementById('compassImg');
+const compassStatus = document.getElementById('compassStatus');
+const manualDir = document.getElementById('manualDir');
+const modeText = document.getElementById('modeText');
+
+/* -------------------------
+   File handlers
+   ------------------------- */
+photoUpload.addEventListener('change', (e) => {
+  const files = Array.from(e.target.files || []);
+  // Reset and add new selected files
+  photos = files.map((f, i) => ({
+  src: URL.createObjectURL(f),
+  fileName: f.name,
+  date: "", time: "", index: i + 1,
+  division: "", state: "", altitude: "", speed: ""
+}));
+
+  currentIndex = 0;
+  renderThumbs();
+  renderPhotoDetails();
+  showCurrent();
+  // if userLocation already set, ensure slide-map shows it
+  if (userLocation) updateSlideMap(userLocation);
+});
+
+audioUpload.addEventListener('change', (e)=> {
+  const file = e.target.files && e.target.files[0];
+  if (file) {
+    audio.src = URL.createObjectURL(file);
+    audio.load();
+  }
+});
+
+/* -------------------------
+   Render helpers
+   ------------------------- */
+function renderThumbs(){
+  thumbList.innerHTML = "";
+  photos.forEach((p, i) => {
+    const div = document.createElement('div');
+    div.className = "photo-item";
+    div.innerHTML = `<img src="${p.src}"><div style="flex:1"><div style="font-size:13px">${p.fileName || ('Photo '+(i+1))}</div><div class="muted" style="font-size:12px">Index ${i+1}</div></div>`;
+    div.onclick = ()=>{ currentIndex = i; showCurrent(); };
+    thumbList.appendChild(div);
+  });
+}
+
+/* Photo-specific inputs */
+function renderPhotoDetails() {
+  photoDetails.innerHTML = "";
+  if (!photos.length) return;
+
+  const header = document.createElement('div');
+  header.className = 'small muted';
+  header.textContent = 'Set details for each photo (optional)';
+  photoDetails.appendChild(header);
+
+  photos.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.flexWrap = 'wrap';
+    row.style.gap = '8px';
+    row.style.marginTop = '6px';
+    row.innerHTML = `
+      <div style="flex:1;min-width:200px">
+        <label class="small">Photo ${i+1}:</label><br>
+        <input id="date-${i}" type="date" value="${p.date || ""}" style="width:45%"/>
+        <input id="time-${i}" type="time" value="${p.time || ""}" style="width:45%"/>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <label class="small">Division</label><br>
+        <input id="division-${i}" type="text" value="${p.division || ""}" style="width:95%"/>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <label class="small">State</label><br>
+        <input id="state-${i}" type="text" value="${p.state || ""}" style="width:95%"/>
+      </div>
+    `;
+    photoDetails.appendChild(row);
+
+    // wire events
+    setTimeout(() => {
+      const d = document.getElementById(`date-${i}`);
+      const t = document.getElementById(`time-${i}`);
+      const divInput = document.getElementById(`division-${i}`);
+      const stInput  = document.getElementById(`state-${i}`);
+
+      if (d) d.onchange = () => {
+        photos[i].date = d.value;
+        if (i === 0) applyAutoTimes();
+        showCurrent();
+      };
+      if (t) t.onchange = () => {
+        photos[i].time = t.value;
+        if (i === 0) applyAutoTimes();
+        showCurrent();
+      };
+      if (divInput) divInput.oninput = () => {
+        photos[i].division = divInput.value;
+        showCurrent();
+      };
+      if (stInput) stInput.oninput = () => {
+        photos[i].state = stInput.value;
+        showCurrent();
+      };
+    }, 50);
+  });
+}
+
+
+/* -------------------------
+   Show current slide + overlay
+   ------------------------- */
+function showCurrent() {
+  if (!photos.length) {
+    odateTime.textContent = "DateTime: -";
+    oheading.textContent = "Heading: -";
+    oplace.textContent = "Place: -";
+    odivision.textContent = "Division: -";
+    ostate.textContent = "State: -";
+    oaltspd.textContent = "Altitude: - · Speed: -";
+    oindex.textContent = "Index number: -";
+    slideImage.src = ""; // clear image if no photos
+    return;
+  }
+
+  const p = photos[currentIndex];
+
+  // ✅ show photo
+  slideImage.src = p.src;
+
+  // full DateTime with ms + weekday
+  let dtStr = "-";
+  if (p.date) {
+    const dt = new Date(p.date + (p.time ? "T" + p.time : ""));
+    if (!isNaN(dt.getTime())) {
+      dtStr = dt.toLocaleString(undefined, {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+      dtStr += "." + String(dt.getMilliseconds()).padStart(3,"0");
+    }
+  }
+  odateTime.textContent = dtStr;
+
+  const headingDeg = getHeadingDegrees();
+  const headingText = headingDeg !== null ? `${Math.round(headingDeg)}° ${getDirectionText()}` : "-";
+  oheading.textContent = headingText;
+
+  oplace.textContent    = p.place || userLocation || "Not set";
+  odivision.textContent = p.division || "-";
+  ostate.textContent    = p.state || "-";
+
+  const altStr = currentAltitude !== null ? currentAltitude.toFixed(1) + "msnm" : "N/A";
+  const spdStr = currentSpeed !== null ? (currentSpeed*3.6).toFixed(1) + "km/h" : "0.0km/h";
+  oaltspd.textContent = `Altitude: ${altStr} · Speed: ${spdStr}`;
+
+  oindex.textContent = `Index number: ${currentIndex+1}`;
+}
+
+
+
+
+/* -------------------------
+   Navigation & autoplay
+   ------------------------- */
+function nextPhoto(){
+  if (!photos.length) return;
+  currentIndex = (currentIndex + 1) % photos.length;
+  showCurrent();
+}
+function prevPhoto(){
+  if (!photos.length) return;
+  currentIndex = (currentIndex - 1 + photos.length) % photos.length;
+  showCurrent();
+}
+function startSlideshow(){
+  if (!photos.length) return;
+  if (audio.src && audio.paused) audio.play();
+  clearInterval(slideTimer);
+  slideDuration = Math.max(1, Number(durationInput.value) || 3) * 1000;
+  slideTimer = setInterval(nextPhoto, slideDuration);
+  modeText.textContent = 'Playing';
+}
+function pauseSlideshow(){
+  clearInterval(slideTimer);
+  slideTimer = null;
+  if (audio && !audio.paused) audio.pause();
+  modeText.textContent = 'Stopped';
+}
+
+/* -------------------------
+   Fit mode change
+   ------------------------- */
+fitMode.addEventListener('change', ()=> {
+  slideImage.style.objectFit = fitMode.value;
+});
+
+/* -------------------------
+   Auto times (applyAutoTimes)
+   - If first photo has date+time, auto-fill others using intervalInput
+   ------------------------- */
+function applyAutoTimes(){
+  const intervalMin = Math.max(1, Number(intervalInput.value) || 5);
+  if (!photos.length) return;
+  // need base date/time from first photo inputs if present
+  const d0 = document.getElementById('date-0')?.value;
+  const t0 = document.getElementById('time-0')?.value;
+  if (!d0 || !t0) return;
+  const start = new Date(`${d0}T${t0}`);
+  if (isNaN(start.getTime())) return;
+  photos.forEach((p,i)=>{
+    const newT = new Date(start.getTime() + i * intervalMin * 60000);
+    p.date = newT.toISOString().split('T')[0];
+    p.time = newT.toTimeString().slice(0,5);
+    // update inputs if present
+    const di = document.getElementById('date-'+i);
+    const ti = document.getElementById('time-'+i);
+    if (di) di.value = p.date;
+    if (ti) ti.value = p.time;
+  });
+  showCurrent();
+}
+
+/* -------------------------
+   Map (user input) - update iframe to search query
+   - Now updates BOTH preview map and slide-map (lower-left)
+   ------------------------- */
+showMapBtn.addEventListener('click', ()=> updateMap());
+function updateMap(){
+  const q = (locationInput.value || "").trim();
+  if (!q) return alert('Enter location text (e.g. "Nagpur, Maharashtra")');
+  userLocation = q;
+  // Google maps embed via query (works without API key)
+  mapFrame.src = `https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed`;
+  updateSlideMap(q);
+  showCurrent();
+}
+function updateSlideMap(q){
+  mapFrameSlide.src = `https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed`;
+}
+
+/* -------------------------
+   Export / Import JSON
+   ------------------------- */
+exportBtn.addEventListener('click', ()=> {
+  const data = {photos, slideDuration, userLocation, audioSrc: audio.src};
+  const blob = new Blob([JSON.stringify(data, null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'slideshow_export.json';
+  a.click();
+});
+
+importBtn.addEventListener('click', ()=> importFile.click());
+importFile.addEventListener('change', (e)=> {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = (ev)=>{
+    try {
+      const data = JSON.parse(ev.target.result);
+      photos = (data.photos || []).map((p,i)=>({
+        src: p.src || p.url || '', fileName: p.fileName || ('photo'+(i+1)), date: p.date||'', time:p.time||'', index:i+1
+      }));
+      slideDuration = data.slideDuration || 3000;
+      durationInput.value = slideDuration/1000;
+      if (data.audioSrc) { audio.src = data.audioSrc; audio.loop=true; }
+      userLocation = data.userLocation || '';
+      if (userLocation) { locationInput.value = userLocation; mapFrame.src = `https://www.google.com/maps?q=${encodeURIComponent(userLocation)}&output=embed`; updateSlideMap(userLocation); }
+      renderThumbs(); renderPhotoDetails(); currentIndex = 0; showCurrent();
+      alert('Imported slideshow JSON (note: imported image src must be accessible URLs for preview to work).');
+    } catch(err){
+      alert('Invalid JSON file');
+    }
+  };
+  r.readAsText(f);
+});
+
+/* -------------------------
+   Download current slide as image (canvas)
+   Now includes Google Static Map (using provided API key) with a robust OSM fallback + compass + overlay details.
+   ------------------------- */
+downloadBtn.addEventListener('click', async ()=> {
+  if (!photos.length) return alert('No photo to download');
+  const p = photos[currentIndex];
+
+  // load image
+  const img = await loadImage(p.src);
+  const canvas = document.createElement('canvas');
+  const W = img.naturalWidth || 10;
+  const H = img.naturalHeight || 10;
+  // limit output size to reasonable max (e.g., 2000px)
+  const maxDim = 2000;
+  let scale = Math.min(1, maxDim / Math.max(W,H));
+  canvas.width = Math.round(W * scale);
+  canvas.height = Math.round(H * scale);
+  const ctx = canvas.getContext('2d');
+
+  // draw background
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // draw image with fitting same as viewer
+  if (fitMode.value === 'cover') {
+    // cover: fill canvas center
+    const r = Math.max(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+    const w = img.naturalWidth * r, h = img.naturalHeight * r;
+    ctx.drawImage(img, (canvas.width - w)/2, (canvas.height - h)/2, w, h);
+  } else {
+    // contain
+    const r = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+    const w = img.naturalWidth * r, h = img.naturalHeight * r;
+    ctx.drawImage(img, (canvas.width - w)/2, (canvas.height - h)/2, w, h);
+  }
+
+  
+// Fixed map size independent of city or canvas
+// --- fixed map size (match CSS iframe) ---
+let mapW = 220, mapH = 120;   // default desktop
+if (window.innerWidth <= 1200) { 
+  mapW = 120; 
+  mapH = 120; 
+}
+
+// position bottom-left
+const pad = 20;
+const mapX = pad;
+const mapY = canvas.height - pad - mapH;
+
+let mapLoaded = false;
+try {
+  if (userLocation) {
+    const GOOGLE_API_KEY = 'YOUR_API_KEY';
+    const zoom = 12; // ✅ constant zoom for all locations
+    const center = encodeURIComponent(userLocation);
+    const mapURL = `https://maps.googleapis.com/maps/api/staticmap?center=${center}&zoom=${zoom}&size=${mapW}x${mapH}&maptype=roadmap&markers=color:red%7C${center}&scale=2&key=${GOOGLE_API_KEY}`;
+    const mapImg = await loadImage(mapURL);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.33)';
+    roundRect(ctx, mapX - 6, mapY - 6, mapW + 12, mapH + 12, 10, true, false);
+    ctx.drawImage(mapImg, mapX, mapY, mapW, mapH);
+
+    mapLoaded = true;
+  }
+} catch (e) {
+  console.warn('Static map failed (CORS). Falling back to OSM.', e);
+  mapLoaded = false;
+}
+
+// --- OSM fallback (same fixed size + zoom) ---
+if (!mapLoaded && userLocation) {
+  try {
+    await drawOSMStaticMap(ctx, mapX, mapY, mapW, mapH, userLocation, 12); // ✅ zoom locked at 12
+    mapLoaded = true;
+  } catch (err) {
+    console.warn('OSM fallback failed:', err);
+    mapLoaded = false;
+  }
+}
+
+async function drawOSMStaticMap(ctx, x, y, w, h, query, zoom = 12){
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+  const res = await fetch(url, {headers:{'Accept':'application/json'}});
+  if (!res.ok) throw new Error('Geocoding failed');
+  const data = await res.json();
+  if (!data || !data.length) throw new Error('No geocode result');
+  const lat = parseFloat(data[0].lat);
+  const lon = parseFloat(data[0].lon);
+
+  const TILE = 256;
+  const worldSize = TILE * Math.pow(2, zoom);
+
+  const proj = latLonToXY(lat, lon, zoom);
+  const topLeftPx = { x: proj.x - w/2, y: proj.y - h/2 };
+
+  const startTileX = Math.floor(topLeftPx.x / TILE);
+  const startTileY = Math.floor(topLeftPx.y / TILE);
+
+  const offsetX = - (topLeftPx.x - startTileX * TILE);
+  const offsetY = - (topLeftPx.y - startTileY * TILE);
+
+  const cols = Math.ceil((w - offsetX) / TILE) + 1;
+  const rows = Math.ceil((h - offsetY) / TILE) + 1;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  roundRect(ctx, x - 6, y - 6, w + 12, h + 12, 10, true, false);
+
+  const maxTile = Math.pow(2, zoom);
+  for (let r = 0; r < rows; r++){
+    for (let c = 0; c < cols; c++){
+      let tx = startTileX + c;
+      let ty = startTileY + r;
+      tx = ((tx % maxTile) + maxTile) % maxTile;
+      if (ty < 0 || ty >= maxTile) continue;
+      const tileURL = `https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`;
+      try {
+        const img = await loadImage(tileURL);
+        ctx.drawImage(img, x + offsetX + c*TILE, y + offsetY + r*TILE, TILE, TILE);
+      } catch(e){}
+    }
+  }
+
+  // red marker
+  ctx.fillStyle = '#e53935';
+  ctx.beginPath();
+  ctx.arc(x + w/2, y + h/2, 6, 0, Math.PI*2);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+}
+
+  // overlay rectangle bottom-right (info)
+  const boxW = Math.min(canvas.width*0.46, 420*(canvas.width/1000));
+  const boxH = 140*(canvas.height/600);
+  const bx = canvas.width - pad - boxW;
+  const by = canvas.height - pad - boxH;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  roundRect(ctx, bx, by, boxW, boxH, 12*(canvas.width/1000), true, false);
+////////////////////////////////////////////////
+  // compute date/time/day strings (prefer photo fields)
+// --- compute timestamp string (prefer EXIF > photo > system) ---
+let dateTimeStr = '';
+
+if (p.exifDateTime) {
+  // 1. EXIF datetime
+  const dt = new Date(p.exifDateTime);
+  if (!isNaN(dt.getTime())) {
+    dateTimeStr = dt.toString(); // raw full string
+  }
+}
+else if (p.date) {
+  // 2. fallback to p.date + p.time
+  const dt = new Date(p.date + (p.time ? 'T' + p.time : ''));
+  if (!isNaN(dt.getTime())) {
+    dateTimeStr = dt.toString();
+  }
+}
+else {
+  // 3. system timestamp
+  dateTimeStr = new Date().toString();
+}
+
+// --- text overlay ---
+ctx.fillStyle = '#e9f2ff';
+const baseFont = Math.max(12, Math.round(14 * (canvas.width / 1000)));
+ctx.font = `${baseFont}px sans-serif`;
+ctx.textAlign = 'left';
+
+const lines = [
+  dateTimeStr,                             // full date-time line
+  p.place || userLocation || 'Not set',    // place
+  p.division || '-',                       // division
+  p.state || '-',                          // state
+  `Altitude: ${currentAltitude ? currentAltitude+'m' : 'N/A'} · Speed: ${currentSpeed ? currentSpeed+'km/h' : '0.0km/h'}`,
+  `Index number: ${currentIndex+1}`        // index
+];
+
+const lineHeight = Math.max(16, Math.round(baseFont * 1.15));
+lines.forEach((ln, i) => {
+  ctx.fillText(ln, bx + 12*(canvas.width/1000), by + 18*(canvas.width/1000) + i * lineHeight);
+});
+
+
+  // draw compass to left of info box (circle + rotated needle + N)
+  const compassSize = Math.round(72 * (canvas.width/1000));
+  const ccx = pad ;    // X = from left edge
+const ccy = pad ;    // Y = from top edge
+
+  // circle
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(ccx + compassSize/2, ccy + compassSize/2, compassSize/2, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  ctx.fill();
+  ctx.lineWidth = Math.max(2, Math.round(2*(canvas.width/1000)));
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.stroke();
+  ctx.restore();
+
+  // rotate needle
+  const headingDeg = (getHeadingDegrees() ?? 0);
+  ctx.save();
+  ctx.translate(ccx + compassSize/2, ccy + compassSize/2);
+  ctx.rotate((headingDeg) * Math.PI/180);
+  ctx.beginPath();
+  ctx.moveTo(0, -compassSize*0.36);
+  ctx.lineTo(compassSize*0.14, compassSize*0.22);
+  ctx.lineTo(-compassSize*0.14, compassSize*0.22);
+  ctx.closePath();
+  ctx.fillStyle = '#2f9cff';
+  ctx.fill();
+  ctx.restore();
+
+  // draw "N" label above compass
+  ctx.fillStyle = '#e6eef8';
+  ctx.font = `${Math.max(10, Math.round(baseFont*0.9))}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('N', ccx + compassSize/2, ccy + 12);
+
+  // If map failed, display small textual box bottom-left with location
+    // If map failed, display small textual box bottom-left with location
+  if (!mapLoaded && userLocation) {
+    const tx = pad;
+    const ty = canvas.height - pad - 80 * (canvas.width/1000);
+    const tw = Math.min(320, Math.round(canvas.width * 0.28));
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    roundRect(ctx, tx, ty, tw, 70, 8, true, false);
+
+    ctx.fillStyle = '#e9f2ff';
+    ctx.font = `${baseFont}px sans-serif`;
+    ctx.textAlign = 'left';
+    const lines2 = [
+      `Location: ${userLocation}`,
+      `Division: ${p.division || '-'}`,
+      `State: ${p.state || '-'}`
+    ];
+    const lh2 = Math.max(16, Math.round(baseFont * 1.1));
+    lines2.forEach((ln, i) => {
+      ctx.fillText(ln, tx + 10, ty + 20 + i * lh2);
+    });
+  }
+
+  // ✅ save canvas to file
+  canvas.toBlob((blob) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = p.fileName.replace(/\.[^.]+$/, '') + '_slide.png';
+    a.click();
+  }, 'image/png');
+});
+
+/* -------------------------
+   OSM fallback helpers (CORS-friendly static map)
+   ------------------------- */
+async function drawOSMStaticMap(ctx, x, y, w, h, query){
+  // 1) Geocode location text to lat/lon via Nominatim (public, CORS-enabled)
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+  const res = await fetch(url, {headers:{'Accept':'application/json'}});
+  if (!res.ok) throw new Error('Geocoding failed');
+  const data = await res.json();
+  if (!data || !data.length) throw new Error('No geocode result');
+  const lat = parseFloat(data[0].lat);
+  const lon = parseFloat(data[0].lon);
+  const zoom = 12;
+
+  // 2) Compute tile coverage
+  const TILE = 256;
+  const scale = 1;
+  const worldSize = TILE * Math.pow(2, zoom);
+
+  const proj = latLonToXY(lat, lon, zoom);
+  const topLeftPx = { x: proj.x - w/2, y: proj.y - h/2 };
+
+  const startTileX = Math.floor(topLeftPx.x / TILE);
+  const startTileY = Math.floor(topLeftPx.y / TILE);
+
+  const offsetX = - (topLeftPx.x - startTileX * TILE);
+  const offsetY = - (topLeftPx.y - startTileY * TILE);
+
+  const cols = Math.ceil((w - offsetX) / TILE) + 1;
+  const rows = Math.ceil((h - offsetY) / TILE) + 1;
+
+  // panel behind map (match Google style)
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  roundRect(ctx, x - 6*(w/640), y - 6*(w/640), w + 12*(w/640), h + 12*(w/640), 10*(w/640), true, false);
+
+  // 3) Draw tiles
+  const maxTile = Math.pow(2, zoom);
+  for (let r = 0; r < rows; r++){
+    for (let c = 0; c < cols; c++){
+      let tx = startTileX + c;
+      let ty = startTileY + r;
+
+      // wrap X (world repeats), clamp Y
+      tx = ((tx % maxTile) + maxTile) % maxTile;
+      if (ty < 0 || ty >= maxTile) continue;
+
+      const tileURL = `https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`;
+      try {
+        const img = await loadImage(tileURL);
+        const dx = x + offsetX + c * TILE;
+        const dy = y + offsetY + r * TILE;
+        ctx.drawImage(img, dx, dy, TILE*scale, TILE*scale);
+      } catch(e){
+        // ignore missing tile
+      }
+    }
+  }
+
+  // 4) Draw a simple red marker at center
+  const centerCanvasX = x + w/2;
+  const centerCanvasY = y + h/2;
+  ctx.save();
+  ctx.fillStyle = '#e53935';
+  ctx.beginPath();
+  ctx.arc(centerCanvasX, centerCanvasY, 6, 0, Math.PI*2);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function latLonToXY(lat, lon, zoom){
+  const TILE = 256;
+  const sinLat = Math.sin(lat * Math.PI / 180);
+  const n = Math.pow(2, zoom);
+  const x = (lon + 180) / 360 * n * TILE;
+  const y = (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * n * TILE;
+  return {x,y};
+}
+
+
+/* -------------------------
+   Geolocation (altitude & speed)
+   ------------------------- */
+if (navigator.geolocation){
+  navigator.geolocation.getCurrentPosition((pos)=>{
+    currentAltitude = pos.coords.altitude !== null ? Math.round(pos.coords.altitude) : null;
+    currentSpeed = pos.coords.speed !== null ? Math.round(pos.coords.speed * 100)/100 : null;
+    showCurrent();
+  }, (err)=>{
+    // user denied or unsupported — leave as null
+    console.log('geoloc err', err);
+  }, {enableHighAccuracy:true, maximumAge:60000, timeout:8000});
+}
+
+/* -------------------------
+   Compass via DeviceOrientation
+   ------------------------- */
+if (window.DeviceOrientationEvent) {
+  // iOS 13+ requires permission
+  function enableDO(){
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().then(r=>{
+        if (r === 'granted') attachDO();
+        else { compassStatus.textContent = 'Permission denied — use manual set'; deviceOrientationSupported=false; }
+      }).catch(()=> { compassStatus.textContent = 'No permission API — using manual'; deviceOrientationSupported=false;});
+    } else {
+      attachDO();
+    }
+  }
+  function attachDO(){
+    window.addEventListener('deviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation', (ev)=>{
+      deviceOrientationSupported = true;
+      // different devices provide different properties; prefer alpha when absolute is not provided
+      let heading = ev.webkitCompassHeading || ev.alpha;
+      if (heading !== null && heading !== undefined) {
+        // on some devices alpha gives degrees from 0..360 relative to device
+        currentHeading = 360 - heading; // adjust to compass bearing
+        // normalize
+        if (currentHeading < 0) currentHeading += 360;
+        if (currentHeading >= 360) currentHeading -= 360;
+        compassStatus.textContent = 'Device orientation active';
+        updateCompassVisual();
+      }
+    }, true);
+  }
+  // try to enable (will prompt on iOS)
+  try { enableDO(); } catch(e){ console.warn('do enable error', e); }
+} else {
+  compassStatus.textContent = 'Device orientation not supported — use manual';
+}
+
+/* manual direction selector */
+manualDir.addEventListener('change', ()=> {
+  const v = manualDir.value;
+  if (!v) return;
+  // set heading degrees approximate
+  const map = {N:0, NE:45, E:90, SE:135, S:180, SW:225, W:270, NW:315};
+  currentHeading = map[v] || null;
+  compassStatus.textContent = 'Manual direction set: ' + (v||'');
+  updateCompassVisual();
+});
+
+/* compass visual rotate */
+function updateCompassVisual(){
+  const deg = getHeadingDegrees();
+  if (deg !== null && deg !== undefined) {
+    compassImg.style.transform = `rotate(${deg}deg)`;
+  } else {
+    compassImg.style.transform = `rotate(0deg)`;
+  }
+}
+function getHeadingDegrees(){ return currentHeading; }
+function getDirectionText(){
+  const deg = getHeadingDegrees();
+  if (deg === null || deg === undefined) return manualDir.value || '';
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  const idx = Math.round(((deg % 360) / 45)) % 8;
+  return dirs[idx];
+}
+
+/* -------------------------
+   UI wiring
+   ------------------------- */
+startBtn.addEventListener('click', startSlideshow);
+pauseBtn.addEventListener('click', pauseSlideshow);
+prevBtn.addEventListener('click', ()=> { pauseSlideshow(); prevPhoto(); });
+nextBtn.addEventListener('click', ()=> { pauseSlideshow(); nextPhoto(); });
+durationInput.addEventListener('change', ()=> { slideDuration = Math.max(1, Number(durationInput.value)||3)*1000; if (slideTimer) { pauseSlideshow(); startSlideshow(); }});
+intervalInput.addEventListener('change', applyAutoTimes);
+
+slideImage.addEventListener('click', ()=> {
+  if (slideTimer) pauseSlideshow(); else startSlideshow();
+});
+
+fullscreenBtn.addEventListener('click', ()=> {
+  const el = document.getElementById('viewer');
+  if (!document.fullscreenElement) el.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen();
+});
+
+/* keyboard navigation */
+document.addEventListener('keydown', (e)=> {
+  if (e.key === 'ArrowRight') { pauseSlideshow(); nextPhoto(); }
+  if (e.key === 'ArrowLeft') { pauseSlideshow(); prevPhoto(); }
+  if (e.key === ' ') { e.preventDefault(); if (slideTimer) pauseSlideshow(); else startSlideshow(); }
+});
+
+/* initial UI */
+showCurrent();
+
+/* -------------------------
+   Utilities / finishing
+   ------------------------- */
+function getCompassDirection(){
+  return getDirectionText();
+}
+
+// keep object URLs from piling — optional cleanup when reloading new images could be added
+window.addEventListener('beforeunload', ()=> {
+  photos.forEach(p => { try{ URL.revokeObjectURL(p.src); }catch(e){} });
+});
+function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+  if (typeof r === 'undefined') r = 5;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
+
+function loadImage(src) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => res(img);
+    img.onerror = (e) => rej(e || 'load error');
+    img.src = src;
+  });
+}
+
+function getHeadingDegrees() {
+  if (manualDir.value) return dirToDeg(manualDir.value);
+  return currentHeading;
+}
+
+function getDirectionText() {
+  if (manualDir.value) return manualDir.value;
+  if (currentHeading == null) return null;
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  const idx = Math.round(currentHeading / 45) % 8;
+  return dirs[idx];
+}
+
+function dirToDeg(d) {
+  return {N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315}[d] ?? 0;
+}
+
+</script>
+</body>
+</html>
+
